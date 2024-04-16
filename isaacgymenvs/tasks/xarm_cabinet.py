@@ -37,7 +37,7 @@ from isaacgymenvs.utils.torch_jit_utils import to_torch, get_axis_params, tensor
 from .base.vec_task import VecTask
 
 
-class FrankaCabinet(VecTask):
+class xarmCabinet(VecTask):
 
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         self.cfg = cfg
@@ -75,8 +75,8 @@ class FrankaCabinet(VecTask):
         num_obs = 23
         num_acts = 9
 
-        self.cfg["env"]["numObservations"] = 23
-        self.cfg["env"]["numActions"] = 9
+        self.cfg["env"]["numObservations"] = 21
+        self.cfg["env"]["numActions"] = 8
 
         super().__init__(config=self.cfg, rl_device=rl_device, sim_device=sim_device, graphics_device_id=graphics_device_id, headless=headless, virtual_screen_capture=virtual_screen_capture, force_render=force_render)
 
@@ -90,7 +90,7 @@ class FrankaCabinet(VecTask):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         # create some wrapper tensors for different slices
-        self.franka_default_dof_pos = to_torch([1.157, -1.066, -0.155, -2.239, -1.841, 1.003, 0.469, 0.035, 0.035], device=self.device)
+        self.franka_default_dof_pos = to_torch([1.22, -0.32, -2.83, -0.45, 0.74, 0.90, 0, 0], device=self.device)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         self.franka_dof_state = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_franka_dofs]
         self.franka_dof_pos = self.franka_dof_state[..., 0]
@@ -134,7 +134,7 @@ class FrankaCabinet(VecTask):
         upper = gymapi.Vec3(spacing, spacing, spacing)
 
         asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../assets")
-        franka_asset_file = "urdf/franka_description/robots/franka_panda.urdf"
+        franka_asset_file = "urdf/LiteParallelGriper11/urdf/LiteParallelGriper11.urdf"
         cabinet_asset_file = "urdf/sektion_cabinet_model/urdf/sektion_cabinet_2.urdf"
 
         if "asset" in self.cfg["env"]:
@@ -144,7 +144,7 @@ class FrankaCabinet(VecTask):
 
         # load franka asset
         asset_options = gymapi.AssetOptions()
-        asset_options.flip_visual_attachments = True
+        asset_options.flip_visual_attachments = False
         asset_options.fix_base_link = True
         asset_options.collapse_fixed_joints = True
         asset_options.disable_gravity = True
@@ -161,8 +161,8 @@ class FrankaCabinet(VecTask):
         asset_options.armature = 0.005
         cabinet_asset = self.gym.load_asset(self.sim, asset_root, cabinet_asset_file, asset_options)
 
-        franka_dof_stiffness = to_torch([400, 400, 400, 400, 400, 400, 400, 1.0e6, 1.0e6], dtype=torch.float, device=self.device)
-        franka_dof_damping = to_torch([80, 80, 80, 80, 80, 80, 80, 1.0e2, 1.0e2], dtype=torch.float, device=self.device)
+        franka_dof_stiffness = to_torch([400, 400, 400, 400, 400, 400, 1.0e6, 1.0e6], dtype=torch.float, device=self.device)
+        franka_dof_damping = to_torch([80, 80, 80, 80, 80, 80,1.0e2, 1.0e2], dtype=torch.float, device=self.device)
 
         self.num_franka_bodies = self.gym.get_asset_rigid_body_count(franka_asset)
         self.num_franka_dofs = self.gym.get_asset_dof_count(franka_asset)
@@ -193,9 +193,9 @@ class FrankaCabinet(VecTask):
         self.franka_dof_lower_limits = to_torch(self.franka_dof_lower_limits, device=self.device)
         self.franka_dof_upper_limits = to_torch(self.franka_dof_upper_limits, device=self.device)
         self.franka_dof_speed_scales = torch.ones_like(self.franka_dof_lower_limits)
-        self.franka_dof_speed_scales[[7, 8]] = 0.1
+        self.franka_dof_speed_scales[[6, 7]] = 0.1
+        franka_dof_props['effort'][6] = 200
         franka_dof_props['effort'][7] = 200
-        franka_dof_props['effort'][8] = 200
 
         # set cabinet dof properties
         cabinet_dof_props = self.gym.get_asset_dof_properties(cabinet_asset)
@@ -208,7 +208,7 @@ class FrankaCabinet(VecTask):
         prop_asset = self.gym.create_box(self.sim, self.prop_width, self.prop_height, self.prop_width, box_opts)
 
         franka_start_pose = gymapi.Transform()
-        franka_start_pose.p = gymapi.Vec3(1.0, 0.0, 0.0)
+        franka_start_pose.p = gymapi.Vec3(0.8, 0.0, 0.2)
         franka_start_pose.r = gymapi.Quat(0.0, 0.0, 1.0, 0.0)
 
         cabinet_start_pose = gymapi.Transform()
@@ -293,18 +293,18 @@ class FrankaCabinet(VecTask):
             self.frankas.append(franka_actor)
             self.cabinets.append(cabinet_actor)
 
-        self.hand_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "panda_link7")
+        self.hand_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "Link6")
         self.drawer_handle = self.gym.find_actor_rigid_body_handle(env_ptr, cabinet_actor, "drawer_top")
-        self.lfinger_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "panda_leftfinger")
-        self.rfinger_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "panda_rightfinger")
+        self.lfinger_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "F1")
+        self.rfinger_handle = self.gym.find_actor_rigid_body_handle(env_ptr, franka_actor, "F2")
         self.default_prop_states = to_torch(self.default_prop_states, device=self.device, dtype=torch.float).view(self.num_envs, self.num_props, 13)
 
         self.init_data()
 
     def init_data(self):
-        hand = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "panda_link7")
-        lfinger = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "panda_leftfinger")
-        rfinger = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "panda_rightfinger")
+        hand = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "Link6")
+        lfinger = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "F1")
+        rfinger = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "F2")
 
         hand_pose = self.gym.get_rigid_transform(self.envs[0], hand)
         lfinger_pose = self.gym.get_rigid_transform(self.envs[0], lfinger)
@@ -331,9 +331,9 @@ class FrankaCabinet(VecTask):
         self.drawer_local_grasp_rot = to_torch([drawer_local_grasp_pose.r.x, drawer_local_grasp_pose.r.y,
                                                 drawer_local_grasp_pose.r.z, drawer_local_grasp_pose.r.w], device=self.device).repeat((self.num_envs, 1))
 
-        self.gripper_forward_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
+        self.gripper_forward_axis = to_torch([0, -1, 0], device=self.device).repeat((self.num_envs, 1))
         self.drawer_inward_axis = to_torch([-1, 0, 0], device=self.device).repeat((self.num_envs, 1))
-        self.gripper_up_axis = to_torch([0, 1, 0], device=self.device).repeat((self.num_envs, 1))
+        self.gripper_up_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
         self.drawer_up_axis = to_torch([0, 0, 1], device=self.device).repeat((self.num_envs, 1))
 
         self.franka_grasp_pos = torch.zeros_like(self.franka_local_grasp_pos)
@@ -445,14 +445,20 @@ class FrankaCabinet(VecTask):
             self.gym.refresh_rigid_body_state_tensor(self.sim)
 
             for i in range(self.num_envs):
-                px = (self.franka_grasp_pos[i] + quat_apply(self.franka_grasp_rot[i], to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
-                py = (self.franka_grasp_pos[i] + quat_apply(self.franka_grasp_rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
-                pz = (self.franka_grasp_pos[i] + quat_apply(self.franka_grasp_rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
+                px = (self.franka_grasp_pos[i] + quat_apply(self.franka_grasp_rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
+                px1=(self.drawer_grasp_pos[i] + quat_apply(self.drawer_grasp_rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
+                # px1 = (self.drawer_grasp_pos[i] + quat_apply(self.drawer_grasp_rot[i], to_torch([0, 0, 1],
+                #                                                                                 device=self.device) * 0.2)).cpu().numpy()
+                # py = (self.franka_grasp_pos[i] + quat_apply(self.franka_grasp_rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
+                # pz = (self.franka_grasp_pos[i] + quat_apply(self.franka_grasp_rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
 
                 p0 = self.franka_grasp_pos[i].cpu().numpy()
+                p1 = self.drawer_grasp_pos[i].cpu().numpy()
                 self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], px[0], px[1], px[2]], [0.85, 0.1, 0.1])
-                self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], py[0], py[1], py[2]], [0.1, 0.85, 0.1])
-                self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], pz[0], pz[1], pz[2]], [0.1, 0.1, 0.85])
+                self.gym.add_lines(self.viewer, self.envs[i], 1, [p1[0], p1[1], p1[2], px1[0], px1[1], px1[2]],
+                                   [0.1, 0.85, 0.1])
+                # self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], py[0], py[1], py[2]], [0.1, 0.85, 0.1])
+                # self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], pz[0], pz[1], pz[2]], [0.1, 0.1, 0.85])
 
                 # px = (self.drawer_grasp_pos[i] + quat_apply(self.drawer_grasp_rot[i], to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
                 # py = (self.drawer_grasp_pos[i] + quat_apply(self.drawer_grasp_rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
