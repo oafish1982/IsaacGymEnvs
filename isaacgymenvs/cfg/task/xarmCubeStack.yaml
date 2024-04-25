@@ -7,17 +7,17 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: ${resolve_default:8192,${...num_envs}}
   envSpacing: 1.5
-  episodeLength: 300
+  episodeLength: 350
   enableDebugVis: False
 
   clipObservations: 5.0
   clipActions: 1.0
 
-  startPositionNoise: 0.16
+  startPositionNoise: 0.15
   startRotationNoise: 0.785
   xarmPositionNoise: 0.0
   xarmRotationNoise: 0.0
-  xarmDofNoise: 0.25
+  xarmDofNoise: 0.0
 
   aggregateMode: 3
 
