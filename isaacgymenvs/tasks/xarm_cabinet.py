@@ -35,11 +35,14 @@ from isaacgym.torch_utils import quat_apply
 from isaacgymenvs.utils.torch_jit_utils import to_torch, get_axis_params, tensor_clamp, \
     tf_vector, tf_combine
 from .base.vec_task import VecTask
-
-
+import copy
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import socket
 import pickle  # 用于序列化数据
 
+plt.ion()
 # UDP服务器的IP地址和端口号
 SERVER_IP = '127.0.0.1'
 SERVER_PORT = 12345
@@ -50,6 +53,17 @@ class xarmCabinet(VecTask):
         self.cfg = cfg
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.max_episode_length = self.cfg["env"]["episodeLength"]
+
+        self.figure, self.ax = plt.subplots()
+        self.line, = self.ax.plot([], [])
+        self.ax.set_xlabel('Steps')
+        self.ax.set_ylabel('Reward')
+        self.ax.set_title('Reward History')
+        self.ax.grid(True)
+        self.text = self.ax.annotate('', xy=(0.5, 0.95), xycoords='axes fraction', ha='center', va='top')
+        self.reward=0
+        self.rewards_history = []
+
 
         self.action_scale = self.cfg["env"]["actionScale"]
         self.start_position_noise = self.cfg["env"]["startPositionNoise"]
@@ -99,7 +113,7 @@ class xarmCabinet(VecTask):
         self.gym.refresh_rigid_body_state_tensor(self.sim)
 
         # create some wrapper tensors for different slices
-        self.franka_default_dof_pos = to_torch([1.22, -0.32, -2.83, -0.45, 0.74, 0.90, 0, 0], device=self.device)
+        self.franka_default_dof_pos = to_torch([0, 0, 0, 0, 0, 0, 0, 0], device=self.device)
         self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
         self.franka_dof_state = self.dof_state.view(self.num_envs, -1, 2)[:, :self.num_franka_dofs]
         self.franka_dof_pos = self.franka_dof_state[..., 0]
@@ -124,6 +138,7 @@ class xarmCabinet(VecTask):
 
         self.reset_idx(torch.arange(self.num_envs, device=self.device))
 
+
     def __send_data(self,data):
         # 将数据序列化为字节流
         data_bytes = pickle.dumps(data)
@@ -135,7 +150,7 @@ class xarmCabinet(VecTask):
     def call_pre_physics_step(self,actions):
         # 在这里调用你的pre_physics_step函数
         # 假设actions是一个torch张量
-        print(actions)  # 这里执行你要发送的操作
+        # print(actions)  # 这里执行你要发送的操作
 
         # 发送数据到服务器
         self.__send_data(actions)  # 发送actions的第一个元素
@@ -159,7 +174,7 @@ class xarmCabinet(VecTask):
         upper = gymapi.Vec3(spacing, spacing, spacing)
 
         asset_root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../assets")
-        franka_asset_file = "urdf/LiteParallelGriper11/urdf/LiteParallelGriper11.urdf"
+        franka_asset_file = "urdf/LiteParallelGriper13/urdf/LiteParallelGriper13.urdf"
         cabinet_asset_file = "urdf/sektion_cabinet_model/urdf/sektion_cabinet_2.urdf"
 
         if "asset" in self.cfg["env"]:
@@ -333,8 +348,8 @@ class xarmCabinet(VecTask):
 
     def init_data(self):
         hand = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "Link6")
-        lfinger = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "F1")
-        rfinger = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "F2")
+        lfinger = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "F2")
+        rfinger = self.gym.find_actor_rigid_body_handle(self.envs[0], self.frankas[0], "F1")
 
         hand_pose = self.gym.get_rigid_transform(self.envs[0], hand)
         lfinger_pose = self.gym.get_rigid_transform(self.envs[0], lfinger)
@@ -461,7 +476,9 @@ class xarmCabinet(VecTask):
     def pre_physics_step(self, actions):
         self.actions = actions.clone().to(self.device)
         # print(self.actions[0])
-        self.call_pre_physics_step(actions[0])
+        if(len(actions)<100):
+            self.call_pre_physics_step(actions[0])
+
         targets = self.franka_dof_targets[:,
                   :self.num_franka_dofs] + self.franka_dof_speed_scales * self.dt * self.actions * self.action_scale
         self.franka_dof_targets[:, :self.num_franka_dofs] = tensor_clamp(
@@ -476,9 +493,12 @@ class xarmCabinet(VecTask):
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(env_ids) > 0:
             self.reset_idx(env_ids)
-
         self.compute_observations()
         self.compute_reward(self.actions)
+
+        # print(self.rew_buf[29])
+
+
 
         # debug viz
         if self.viewer and self.debug_viz:
