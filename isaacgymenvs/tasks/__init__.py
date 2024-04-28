@@ -106,7 +106,7 @@ isaacgym_task_map = {
     "FactoryTaskNutBoltScrew": FactoryTaskNutBoltScrew,
     "IndustRealTaskPegsInsert": IndustRealTaskPegsInsert,
     "IndustRealTaskGearsInsert": IndustRealTaskGearsInsert,
-    "FrankaCabinet": xarmCabinet,
+    "FrankaCabinet": FrankaCabinet,
     "xarmCabinet": xarmCabinet,
     "FrankaCubeStack": FrankaCubeStack,
     "xarmCubeStack": xarmCubeStack,
