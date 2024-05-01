@@ -34,7 +34,10 @@ from isaacgym import gymtorch
 from isaacgym import gymapi
 import sys
 import time
-from xarm.wrapper import XArmAPI
+try:
+    from xarm.wrapper import XArmAPI
+except:
+    print("未安装 xarm SDK,SDK地址 https://github.com/xArm-Developer/xArm-Python-SDK")
 from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp, quat_apply
 from isaacgymenvs.tasks.base.vec_task import VecTask
 import matplotlib.pyplot as plt
@@ -107,6 +110,10 @@ class xarmCubeStack(VecTask):
         self.ax.set_title('Reward History')
         self.ax.grid(True)
         self.text = self.ax.annotate('', xy=(0.5, 0.95), xycoords='axes fraction', ha='center', va='top')
+        self.text2 = self.ax.annotate('', xy=(0.5, 0.90), xycoords='axes fraction', ha='center', va='top')
+        self.text3 = self.ax.annotate('', xy=(0.5, 0.85), xycoords='axes fraction', ha='center', va='top')
+        self.text4 = self.ax.annotate('', xy=(0.5, 0.80), xycoords='axes fraction', ha='center', va='top')
+
         self.reward=0
         self.rewards_history = []
 
@@ -505,11 +512,13 @@ class xarmCubeStack(VecTask):
         return self.obs_buf
 
     def reset_idx(self, env_ids):
-        self.arm.clean_error()
-        self.arm.motion_enable(enable=True)
-        self.arm.set_mode(1)
-        self.arm.set_state(0)
-
+        try:
+            self.arm.clean_error()
+            self.arm.motion_enable(enable=True)
+            self.arm.set_mode(1)
+            self.arm.set_state(0)
+        except:
+            pass
         env_ids_int32 = env_ids.to(dtype=torch.int32)
 
         # Reset cubes, sampling cube B first, then A
@@ -714,15 +723,16 @@ class xarmCubeStack(VecTask):
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         if len(env_ids) > 0:
             # pass
-            print(env_ids)
+            # print(env_ids)
             self.reset_idx(env_ids)
-            try:
-                print("reset")
-                # self.rc.reset()
-            except:
-                print("reset failed")
+            # try:
+            #     print("reset")
+            #     # self.rc.reset()
+            # except:
+            #     print("reset failed")
         self.compute_observations()
         self.compute_reward(self.actions)
+        
         # print(self.actions[29])
         try:
             # angles = self.actions[29].cpu()
@@ -730,12 +740,12 @@ class xarmCubeStack(VecTask):
             dof_index = self.gym.get_actor_dof_index(self.envs[136], self.frankas[136], 0, gymapi.DOMAIN_SIM)
             _dof_states = self.gym.acquire_dof_state_tensor(self.sim)
             dof_states = gymtorch.wrap_tensor(_dof_states)
-            print("关节0:", float(dof_states[dof_index, 0])*57.29578,
-                  "关节1:", float(dof_states[dof_index+1, 0])*57.29578,
-                  "关节2:", -float(dof_states[dof_index+2, 0])*57.29578,
-                  "关节3:", float(dof_states[dof_index+3, 0])*57.29578,
-                  "关节4:", float(dof_states[dof_index+4, 0])*57.29578,
-                  "关节5:", float(dof_states[dof_index+5, 0])*57.29578)
+            # print("关节0:", float(dof_states[dof_index, 0])*57.29578,
+            #       "关节1:", float(dof_states[dof_index+1, 0])*57.29578,
+            #       "关节2:", -float(dof_states[dof_index+2, 0])*57.29578,
+            #       "关节3:", float(dof_states[dof_index+3, 0])*57.29578,
+            #       "关节4:", float(dof_states[dof_index+4, 0])*57.29578,
+            #       "关节5:", float(dof_states[dof_index+5, 0])*57.29578)
             angles = [float(dof_states[dof_index, 0]),
                       float(dof_states[dof_index+1, 0]),
                       -float(dof_states[dof_index+2, 0]),
@@ -777,9 +787,8 @@ class xarmCubeStack(VecTask):
             #     time.sleep(0.01)
                 # print(angles)
         except Exception as e:
-            # pass
-            print(e)
-            # print("aaa")
+            pass
+            # print(e)
 
             # time.sleep(3)
         # debug viz
@@ -794,38 +803,47 @@ class xarmCubeStack(VecTask):
             cubeA_rot = self.states["cubeA_quat"]
             cubeB_pos = self.states["cubeB_pos"]
             cubeB_rot = self.states["cubeB_quat"]
+            debug_env=1031
+            if debug_env in env_ids:
+                self.rewards_history = []
+                self.reward = 0
+            self.reward += self.rew_buf[debug_env].cpu()
 
+            self.rewards_history.append(self.reward.detach().clone())
+            # print(self.rewards_history)
+            self.line.set_xdata(range(len(self.rewards_history)))
+            self.line.set_ydata(self.rewards_history)
+            self.ax.relim()
+            self.ax.autoscale_view()
+            self.text.set_text(f'Current Reward: {self.rew_buf[debug_env]:.2f}')
+            self.text2.set_text(f'dis: {torch.norm(self.states["cubeA_pos_relative"][debug_env], dim=-1):.4f}')
+            self.text3.set_text(f'a_ali_b: {torch.norm(self.states["cubeA_to_cubeB_pos"][:, :2], dim=-1)[debug_env]:.4f}')
+
+            cubeA_height=self.states["cubeA_pos"][:, 2] - self.reward_settings["table_height"]
+            target_height = self.states["cubeB_size"] + self.states["cubeA_size"] / 2.0
+
+            self.text4.set_text(f'cubeA_on_cubeB: {torch.abs(cubeA_height - target_height)[debug_env]:.4f}')
+            # 绘制图形并暂停一段时间
+            self.figure.canvas.draw()
+            self.figure.canvas.flush_events()
+            plt.pause(0.001)
+            # print(d[29])
             # Plot visualizations
-            for i in range(self.num_envs):
-                if 711 in env_ids:
-                    self.rewards_history = []
-                    self.reward = 0
-                self.reward += self.rew_buf[711].cpu()
+            # for i in range(self.num_envs):
 
-                self.rewards_history.append(copy.deepcopy(self.reward))
-                # print(self.rewards_history)
-                self.line.set_xdata(range(len(self.rewards_history)))
-                self.line.set_ydata(self.rewards_history)
-                self.ax.relim()
-                self.ax.autoscale_view()
-                self.text.set_text(f'Current Reward: {self.rew_buf[29]:.2f}')
-                # 绘制图形并暂停一段时间
-                self.figure.canvas.draw()
-                self.figure.canvas.flush_events()
-                plt.pause(0.001)
 
-                for pos, rot in zip((eef_pos, cubeA_pos, cubeB_pos), (eef_rot, cubeA_rot, cubeB_rot)):
-                    px = (pos[i] + quat_apply(rot[i], to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
-                    py = (pos[i] + quat_apply(rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
-                    pz = (pos[i] + quat_apply(rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
+                # for pos, rot in zip((eef_pos, cubeA_pos, cubeB_pos), (eef_rot, cubeA_rot, cubeB_rot)):
+                #     px = (pos[i] + quat_apply(rot[i], to_torch([1, 0, 0], device=self.device) * 0.2)).cpu().numpy()
+                #     py = (pos[i] + quat_apply(rot[i], to_torch([0, 1, 0], device=self.device) * 0.2)).cpu().numpy()
+                #     pz = (pos[i] + quat_apply(rot[i], to_torch([0, 0, 1], device=self.device) * 0.2)).cpu().numpy()
 
-                    p0 = pos[i].cpu().numpy()
-                    self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], px[0], px[1], px[2]],
-                                       [0.85, 0.1, 0.1])
-                    self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], py[0], py[1], py[2]],
-                                       [0.1, 0.85, 0.1])
-                    self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], pz[0], pz[1], pz[2]],
-                                       [0.1, 0.1, 0.85])
+                #     p0 = pos[i].cpu().numpy()
+                #     self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], px[0], px[1], px[2]],
+                #                        [0.85, 0.1, 0.1])
+                #     self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], py[0], py[1], py[2]],
+                #                        [0.1, 0.85, 0.1])
+                #     self.gym.add_lines(self.viewer, self.envs[i], 1, [p0[0], p0[1], p0[2], pz[0], pz[1], pz[2]],
+                #                        [0.1, 0.1, 0.85])
 
 
 #####################################################################
@@ -864,9 +882,12 @@ def compute_franka_reward(
     dist_reward = torch.max(dist_reward, align_reward)
 
     # final reward for stacking successfully (only if cubeA is close to target height and corresponding location, and gripper is not grasping)
-    cubeA_align_cubeB = (torch.norm(states["cubeA_to_cubeB_pos"][:, :2], dim=-1) < 0.01)
+    cubeA_align_cubeB = (torch.norm(states["cubeA_to_cubeB_pos"][:, :2], dim=-1) < 0.015)
     cubeA_on_cubeB = torch.abs(cubeA_height - target_height) < 0.015
     gripper_away_from_cubeA = (d > 0.05)
+
+    f_dis = torch.norm(states["eef_rf_pos"] - states["eef_lf_pos"], dim=-1)>0.05
+
     stack_reward = cubeA_align_cubeB & cubeA_on_cubeB & gripper_away_from_cubeA
 
     # Compose rewards
@@ -880,7 +901,7 @@ def compute_franka_reward(
     )
 
     # Compute resets
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1) | (stack_reward > 0), torch.ones_like(reset_buf),
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1), torch.ones_like(reset_buf),
                             reset_buf)
 
     return rewards, reset_buf

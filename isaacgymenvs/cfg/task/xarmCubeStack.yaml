@@ -7,8 +7,8 @@ physics_engine: ${..physics_engine}
 env:
   numEnvs: ${resolve_default:8192,${...num_envs}}
   envSpacing: 1.5
-  episodeLength: 350
-  enableDebugVis: False
+  episodeLength: 300
+  enableDebugVis: True
 
   clipObservations: 5.0
   clipActions: 1.0
@@ -17,15 +17,15 @@ env:
   startRotationNoise: 0.785
   xarmPositionNoise: 0.0
   xarmRotationNoise: 0.0
-  xarmDofNoise: 0.0
+  xarmDofNoise: 0.25
 
   aggregateMode: 3
 
   actionScale: 1.0
-  distRewardScale: 0.1
+  distRewardScale: 0.5
   liftRewardScale: 1.5
   alignRewardScale: 2.0
-  stackRewardScale: 16.0
+  stackRewardScale: 16
 
   controlType: osc  # options are {joint_tor, osc}
 
