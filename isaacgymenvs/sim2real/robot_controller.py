@@ -48,11 +48,17 @@ class RobotContorller:
         self.arm.motion_enable(enable=True)
         self.arm.set_mode(0)
         self.arm.set_state(state=0)
-
         self.arm.reset(wait=True)
-
         self.arm.set_mode(1)
         self.arm.set_state(0)
+
+    def clean_error(self):
+        self.arm.clean_error()
+        self.arm.motion_enable(enable=True)
+        self.arm.set_mode(1)
+        self.arm.set_state(0)
+
+
     def check_safety(self, angles, is_radian=True):
         for angle, q_min, q_max in zip(angles, self.q_min, self.q_max):
             assert q_min <= angle and angle <= q_max
@@ -104,5 +110,6 @@ class RobotContorller:
         #     f'act_target_angles is {act_target_angles}-----------------------')
         self.check_safety(act_target_angles)
         # , speed=100)#, wait=False)
-        self.arm.set_servo_angle_j(
+        ret=self.arm.set_servo_angle_j(
             angles=act_target_angles[:6], is_radian=True)
+        return ret

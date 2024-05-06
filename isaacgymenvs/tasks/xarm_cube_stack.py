@@ -88,8 +88,9 @@ class xarmCubeStack(VecTask):
             self.arm.motion_enable(enable=True)
             self.arm.set_mode(1)
             self.arm.set_state(0)
-            # DH_params = None
-            # self.rc = RobotContorller(arm, DH_params, filter_size=5, filter_type=None)
+            DH_params = None
+            self.rc = RobotContorller(self.arm, DH_params, filter_size=5, filter_type=None)
+            time.sleep(1)
         # try:
         #     self.arm = XArmAPI("192.168.1.206",is_radian=True)
         #     self.arm.motion_enable(enable=True)
@@ -100,7 +101,8 @@ class xarmCubeStack(VecTask):
         #     self.arm.set_state(0)
         #     time.sleep(1)
         except Exception as e:
-            pass
+            print(e)
+            print("连接失败")
 
 
         self.figure, self.ax = plt.subplots()
@@ -512,13 +514,13 @@ class xarmCubeStack(VecTask):
         return self.obs_buf
 
     def reset_idx(self, env_ids):
-        try:
-            self.arm.clean_error()
-            self.arm.motion_enable(enable=True)
-            self.arm.set_mode(1)
-            self.arm.set_state(0)
-        except:
-            pass
+        # try:
+        #     self.arm.clean_error()
+        #     self.arm.motion_enable(enable=True)
+        #     self.arm.set_mode(1)
+        #     self.arm.set_state(0)
+        # except:
+        #     pass
         env_ids_int32 = env_ids.to(dtype=torch.int32)
 
         # Reset cubes, sampling cube B first, then A
@@ -719,17 +721,17 @@ class xarmCubeStack(VecTask):
 
     def post_physics_step(self):
         self.progress_buf += 1
-
+        debug_env=29
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if len(env_ids) > 0:
-            # pass
-            # print(env_ids)
-            self.reset_idx(env_ids)
-            # try:
-            #     print("reset")
-            #     # self.rc.reset()
-            # except:
-            #     print("reset failed")
+        
+        self.reset_idx(env_ids)
+        # print(env_ids)
+        if debug_env in env_ids:    
+            try:
+                self.rc.reset()
+                print("reset"+"*"*50)
+            except:
+                print("reset failed")
         self.compute_observations()
         self.compute_reward(self.actions)
         
@@ -737,7 +739,7 @@ class xarmCubeStack(VecTask):
         try:
             # angles = self.actions[29].cpu()
             self.gym.refresh_dof_state_tensor(self.sim)
-            dof_index = self.gym.get_actor_dof_index(self.envs[136], self.frankas[136], 0, gymapi.DOMAIN_SIM)
+            dof_index = self.gym.get_actor_dof_index(self.envs[debug_env], self.frankas[debug_env], 0, gymapi.DOMAIN_SIM)
             _dof_states = self.gym.acquire_dof_state_tensor(self.sim)
             dof_states = gymtorch.wrap_tensor(_dof_states)
             # print("关节0:", float(dof_states[dof_index, 0])*57.29578,
@@ -751,8 +753,8 @@ class xarmCubeStack(VecTask):
                       -float(dof_states[dof_index+2, 0]),
                       -float(dof_states[dof_index+3, 0]),
                       float(dof_states[dof_index+4, 0]),
-                      float(dof_states[dof_index+5, 0])]
-            ret = self.arm.set_servo_angle_j(angles)
+                      -float(dof_states[dof_index+5, 0])]
+            # ret = self.arm.set_servo_angle_j(angles)
             #
             # # 将-1替换为0
             # angles[angles == -1] = 0
@@ -767,8 +769,9 @@ class xarmCubeStack(VecTask):
             # angles_ = scaled_date
             # new = scaled_date
             # if new - last
-            # self.rc.move_robot_joint(angles, is_radian=True)
-
+            ret=self.rc.move_robot_joint(angles, is_radian=True)
+            if(ret==1):
+                self.rc.clean_error()
             # last = scaled_date
             # time.sleep(0.01)
 
@@ -787,8 +790,8 @@ class xarmCubeStack(VecTask):
             #     time.sleep(0.01)
                 # print(angles)
         except Exception as e:
-            pass
-            # print(e)
+            # pass
+            print(e)
 
             # time.sleep(3)
         # debug viz
@@ -803,7 +806,7 @@ class xarmCubeStack(VecTask):
             cubeA_rot = self.states["cubeA_quat"]
             cubeB_pos = self.states["cubeB_pos"]
             cubeB_rot = self.states["cubeB_quat"]
-            debug_env=1031
+            
             if debug_env in env_ids:
                 self.rewards_history = []
                 self.reward = 0
@@ -901,7 +904,7 @@ def compute_franka_reward(
     )
 
     # Compute resets
-    reset_buf = torch.where((progress_buf >= max_episode_length - 1), torch.ones_like(reset_buf),
+    reset_buf = torch.where((progress_buf >= max_episode_length - 1)|stack_reward>0, torch.ones_like(reset_buf),
                             reset_buf)
 
     return rewards, reset_buf
