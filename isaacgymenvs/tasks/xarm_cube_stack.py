@@ -42,7 +42,8 @@ from isaacgymenvs.utils.torch_jit_utils import quat_mul, to_torch, tensor_clamp,
 from isaacgymenvs.tasks.base.vec_task import VecTask
 import matplotlib.pyplot as plt
 import copy
-from sim2real.robot_controller import RobotContorller
+from sim2real.lite6Follower import lite6Follower
+
 @torch.jit.script
 def axisangle2quat(vec, eps=1e-6):
     """
@@ -83,26 +84,7 @@ class xarmCubeStack(VecTask):
     def __init__(self, cfg, rl_device, sim_device, graphics_device_id, headless, virtual_screen_capture, force_render):
         self.cfg = cfg
 
-        try:
-            self.arm = XArmAPI("192.168.1.206", is_radian=True)
-            self.arm.motion_enable(enable=True)
-            self.arm.set_mode(1)
-            self.arm.set_state(0)
-            DH_params = None
-            self.rc = RobotContorller(self.arm, DH_params, filter_size=5, filter_type=None)
-            time.sleep(1)
-        # try:
-        #     self.arm = XArmAPI("192.168.1.206",is_radian=True)
-        #     self.arm.motion_enable(enable=True)
-        #
-        #     self.arm.reset(wait=True)
-        #
-        #     self.arm.set_mode(1)
-        #     self.arm.set_state(0)
-        #     time.sleep(1)
-        except Exception as e:
-            print(e)
-            print("连接失败")
+        self.lite6_follower = lite6Follower()
 
 
         self.figure, self.ax = plt.subplots()
@@ -721,7 +703,7 @@ class xarmCubeStack(VecTask):
 
     def post_physics_step(self):
         self.progress_buf += 1
-        debug_env=29
+        debug_env=137
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
         
         self.reset_idx(env_ids)
@@ -754,6 +736,10 @@ class xarmCubeStack(VecTask):
                       -float(dof_states[dof_index+3, 0]),
                       float(dof_states[dof_index+4, 0]),
                       -float(dof_states[dof_index+5, 0])]
+            gripper_finger = float(dof_states[dof_index+6, 0])
+            # print("finger:", gripper_finger)
+            angles.append(gripper_finger)
+            self.lite6_follower.run_lite6(angles)
             # ret = self.arm.set_servo_angle_j(angles)
             #
             # # 将-1替换为0
@@ -769,9 +755,9 @@ class xarmCubeStack(VecTask):
             # angles_ = scaled_date
             # new = scaled_date
             # if new - last
-            ret=self.rc.move_robot_joint(angles, is_radian=True)
-            if(ret==1):
-                self.rc.clean_error()
+            # ret=self.rc.move_robot_joint(angles, is_radian=True)
+            # if(ret==1):
+            #     self.rc.clean_error()
             # last = scaled_date
             # time.sleep(0.01)
 

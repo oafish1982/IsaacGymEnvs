@@ -102,9 +102,7 @@ class RobotContorller:
 
     def move_robot_joint(self, joints, is_radian=True):
         target_angles = joints
-
         act_target_angles = [ang for ang in target_angles]
-
         act_target_angles = self._apply_filter(act_target_angles[:6])
         # print(
         #     f'act_target_angles is {act_target_angles}-----------------------')
